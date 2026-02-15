@@ -1,0 +1,8 @@
+{
+  "SourceFolder": "C:/photos/sequence_001",
+  "TargetDiskFolder": "3d_visualization/product_123",
+  "SortStrategy": "LikeNumbers",
+  "OAuthToken": "YOUR_YANDEX_DISK_OAUTH_TOKEN",
+  "MaxParallelUploads": 4,
+  "AllowedExtensions": [ ".jpg", ".jpeg", ".png", ".webp" ]
+}

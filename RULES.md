@@ -27,7 +27,20 @@
    - Stream files without full buffering
    - Control parallelism via `SemaphoreSlim`
 
-6. **Technical Constraints**:
+6. **Code Style**:
+   - Never write `if () return` on a single line. Always use multi-line format:
+     ```csharp
+     // Bad
+     if (condition) return;
+     
+     // Good
+     if (condition)
+     {
+         return;
+     }
+     ```
+
+7. **Technical Constraints**:
    - Minimum .NET version: 8.0
    - Use only `System.Net.Http` (no third-party HTTP libraries)
    - Follow official Yandex.Disk REST API documentation
