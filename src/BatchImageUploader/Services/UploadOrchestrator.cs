@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using System.IO;
 using BatchImageUploader.Models;
 using BatchImageUploader.Services.Interfaces;
 using BatchImageUploader.Utils;
@@ -26,14 +25,13 @@ public class UploadOrchestrator
     {
         var results = new UploadResult[files.Length];
         var queue = new ConcurrentQueue<UploadItem>(files);
-        var semaphore = new SemaphoreSlim(maxParallelUploads, maxParallelUploads);
         var tasks = new List<Task>();
 
         _completedCount = 0;
 
         for (int i = 0; i < maxParallelUploads; i++)
         {
-            var task = ProcessUploadQueueAsync(queue, semaphore, results, files.Length, cancellationToken);
+            var task = ProcessUploadQueueAsync(queue, results, files.Length, cancellationToken);
             tasks.Add(task);
         }
 
@@ -44,15 +42,12 @@ public class UploadOrchestrator
 
     private async Task ProcessUploadQueueAsync(
         ConcurrentQueue<UploadItem> queue,
-        SemaphoreSlim semaphore,
         UploadResult[] results,
         int totalFiles,
         CancellationToken cancellationToken)
     {
         while (queue.TryDequeue(out var item))
         {
-            await semaphore.WaitAsync(cancellationToken);
-
             try
             {
                 var remotePath = $"{_targetFolder}/{Path.GetFileName(item.FilePath)}";
@@ -106,10 +101,6 @@ public class UploadOrchestrator
                     Console.Error.WriteLine(
                         $"[{_completedCount}/{totalFiles}] ✗ Failed to upload {Path.GetFileName(item.FilePath)}: {ex.Message}");
                 }
-            }
-            finally
-            {
-                semaphore.Release();
             }
         }
     }
