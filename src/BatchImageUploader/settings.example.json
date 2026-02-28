@@ -4,5 +4,6 @@
   "SortStrategy": "LikeNumbers",
   "OAuthToken": "YOUR_YANDEX_DISK_OAUTH_TOKEN",
   "MaxParallelUploads": 4,
-  "AllowedExtensions": [ ".jpg", ".jpeg", ".png", ".webp" ]
+  "AllowedExtensions": [ ".jpg", ".jpeg", ".png", ".webp" ],
+  "GenerateWidget": false
 }

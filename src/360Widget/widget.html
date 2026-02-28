@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>360° Viewer</title>
+  <style>
+    :root { --bg1: #667eea; --bg2: #764ba2; --accent: #667eea; }
+    * { box-sizing: border-box; }
+    html,body { height:100%; margin:0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif; background: linear-gradient(135deg,var(--bg1) 0%,var(--bg2) 100%); display:flex; align-items:center; justify-content:center; padding:24px; }
+    .container { background:#fff; border-radius:16px; box-shadow:0 20px 60px rgba(0,0,0,0.25); padding:24px; width:100%; max-width:900px; }
+    h1 { margin:0 0 8px; font-size:24px; color:#222; text-align:center; }
+    .subtitle { margin:0 0 18px; color:#666; text-align:center; }
+
+    /* Viewer layout */
+    .viewer-wrapper { position:relative; width:100%; max-width:760px; margin:0 auto; background:#111; border-radius:12px; overflow:hidden; display:flex; align-items:center; justify-content:center; }
+    /* Maintain aspect ratio so placeholder/spinner are visible */
+    .viewer-aspect { width:100%; aspect-ratio: 16 / 9; display:block; position:relative; }
+
+    #viewer { display:block; width:100%; height:100%; object-fit:contain; background:#000; }
+
+    .loading-indicator { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); text-align:center; color:#ddd; z-index:20; pointer-events:none; }
+    .spinner { width:56px; height:56px; border-radius:50%; border:6px solid rgba(255,255,255,0.15); border-top-color:var(--accent); animation:spin 1s linear infinite; margin:0 auto 12px; }
+    @keyframes spin { to { transform:rotate(360deg); } }
+
+    .frame-counter { text-align:center; margin-top:14px; color:var(--accent); font-weight:600; }
+
+    .fullscreen-btn { position:absolute; top:12px; right:12px; z-index:30; background:rgba(0,0,0,0.45); border:0; width:44px; height:44px; border-radius:8px; display:flex; align-items:center; justify-content:center; cursor:pointer; }
+
+    @media (max-width:600px) { .container{padding:16px;} h1{font-size:20px;} }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>360° Viewer</h1>
+    <p class="subtitle">Drag or swipe to rotate</p>
+
+    <div class="viewer-wrapper">
+      <div class="viewer-aspect">
+        <!-- Transparent 1x1 GIF prevents browser from showing broken image icon before first frame -->
+        <img id="viewer" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==" alt="360 view" />
+
+        <button class="fullscreen-btn" id="fullscreenBtn" title="Fullscreen" aria-label="Toggle fullscreen">
+          <svg id="expandIcon" viewBox="0 0 24 24" width="20" height="20" fill="#fff" xmlns="http://www.w3.org/2000/svg"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>
+        </button>
+
+        <div class="loading-indicator" id="loadingIndicator" aria-hidden="false">
+          <div class="spinner" role="status" aria-hidden="true"></div>
+          <div id="loadingText">Loading images...</div>
+          <div id="loadingProgress">0 / 0</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="frame-counter" id="frameCounter">Frame: 0 / 0</div>
+  </div>
+
+  <script>
+    // Embedded data from result.json
+    window.RESULT_DATA = [
+  {
+    "index": 0,
+    "filename": "mic-1.jpg",
+    "publicUrl": "https://downloader.disk.yandex.ru/disk/8b631d8ce3ed9670e57dafe18bc4c1501a636f064a8685a4e1a24586bc4ddc1d/69a0c3f0/nhlfEqlTRuPLYW4Y6UpDEo2bW2sglf-mVHlNs8PYim96WExAC3XkGdVJLGfhZnbW9maoNwX4QYWYIJZSUeMw1g%3D%3D?uid=2333478932&filename=mic-1.jpg&disposition=attachment&hash=&limit=0&content_type=image%2Fjpeg&owner_uid=2333478932&fsize=342769&hid=50d499a00577be7f0496c711258b707b&media_type=image&tknv=v3&etag=3e8257f12923b469bb5af6dc428d0f06"
+  },
+  {
+    "index": 1,
+    "filename": "mic-2.jpg",
+    "publicUrl": "https://downloader.disk.yandex.ru/disk/8e256025d6d1a43d632aded24902621ce28f7c90d20b1a243842b1dcbf5e8ab7/69a0c3f4/nhlfEqlTRuPLYW4Y6UpDEkHqiVsvLMvZSBfmTW0t6wr5et5R5btzRnH5GsGmLa4pwZnoAGeNaCkSQ4j-dXkugA%3D%3D?uid=2333478932&filename=mic-2.jpg&disposition=attachment&hash=&limit=0&content_type=image%2Fjpeg&owner_uid=2333478932&fsize=358314&hid=a33f9c87295579cbf76f713d55afbbc0&media_type=image&tknv=v3&etag=0ec3707502c99ccee4ef3e06d93f7c3b"
+  },
+  {
+    "index": 2,
+    "filename": "mic-3.jpg",
+    "publicUrl": "https://downloader.disk.yandex.ru/disk/92484f9e5e89dc268230fd159947ab4465a0eaa85540afa35344a72155dd6d29/69a0c3f1/nhlfEqlTRuPLYW4Y6UpDEpgvxsGdojAZOhDme22_BIxdTEB9HYsKpUniU5B-KaIYbS05L7VIi0KONG6hrjWQLg%3D%3D?uid=2333478932&filename=mic-3.jpg&disposition=attachment&hash=&limit=0&content_type=image%2Fjpeg&owner_uid=2333478932&fsize=359938&hid=c4c8c3ab154f13214064c571cae4d223&media_type=image&tknv=v3&etag=9e3795f7e6fab937d94b52ffcf906efc"
+  },
+  {
+    "index": 3,
+    "filename": "mic-4.jpg",
+    "publicUrl": "https://downloader.disk.yandex.ru/disk/c84d433ae474bd5353e592afbefd93b36e662ccdf0bd87a3c813761b9a36ceb1/69a0c3f2/nhlfEqlTRuPLYW4Y6UpDEogOcQ1ts0qhOESo_XyoJbDLcC1AwmKN1meMDI4ybkNdtCqQm39wEQJYOvdZ559Eig%3D%3D?uid=2333478932&filename=mic-4.jpg&disposition=attachment&hash=&limit=0&content_type=image%2Fjpeg&owner_uid=2333478932&fsize=398593&hid=bde5f20a528b37a50cdbe8d9732d7fdd&media_type=image&tknv=v3&etag=3c9021a65e53e6a660ad9255aabdd806"
+  },
+  {
+    "index": 4,
+    "filename": "mic-5.jpg",
+    "publicUrl": "https://downloader.disk.yandex.ru/disk/54fbb9ba37183186dd0c7357efe25830f947d45416445e088b6ef2cbc82d5633/69a0c3f7/nhlfEqlTRuPLYW4Y6UpDEmDmjiuk2kVf2jypCWe6ItwjOEwx41wITWlEg6fg4rUcYnt0xOGFUjwxA7MmVcBJUw%3D%3D?uid=2333478932&filename=mic-5.jpg&disposition=attachment&hash=&limit=0&content_type=image%2Fjpeg&owner_uid=2333478932&fsize=401879&hid=f9890d3bd188130d2c22ec3f571373b7&media_type=image&tknv=v3&etag=82791a590bf284ac32a74c9ed74f16c7"
+  },
+  {
+    "index": 5,
+    "filename": "mic-6.jpg",
+    "publicUrl": "https://downloader.disk.yandex.ru/disk/6b263ce388966d1671f043878e9b9e00e073a92163587ffec3c656e71a46b93f/69a0c3f6/nhlfEqlTRuPLYW4Y6UpDEhzAwX4HGEy2r9ZmL0gFDB4b1u1HvYhn-OWf-4sY4fXSeKIec7jIxqNOdQd-tHxiEw%3D%3D?uid=2333478932&filename=mic-6.jpg&disposition=attachment&hash=&limit=0&content_type=image%2Fjpeg&owner_uid=2333478932&fsize=401513&hid=137e9e033c41a0ab59bdb24d7a51ab29&media_type=image&tknv=v3&etag=fd6735442ad58dab622addd61831f834"
+  },
+  {
+    "index": 6,
+    "filename": "mic-7.jpg",
+    "publicUrl": "https://downloader.disk.yandex.ru/disk/0e4f7767a2935addae315ad7c6226883d6dcd02949ef8806415bad64649d6474/69a0c3f8/nhlfEqlTRuPLYW4Y6UpDEtUw6pQrPy356tBKPpdQGMUXqpKqa0yAvQC2EYBBkTmH9qXtiNwlMC-JIE977SLQWA%3D%3D?uid=2333478932&filename=mic-7.jpg&disposition=attachment&hash=&limit=0&content_type=image%2Fjpeg&owner_uid=2333478932&fsize=396702&hid=0c0f962343232c1b083c1ab953d88e94&media_type=image&tknv=v3&etag=44a13f73a0963ab3985defec5bc06e4e"
+  },
+  {
+    "index": 7,
+    "filename": "mic-8.jpg",
+    "publicUrl": "https://downloader.disk.yandex.ru/disk/7f9c775ef205d7de9c7be31980e7b93919a4600e9e1886622b10cda06b135641/69a0c3f8/nhlfEqlTRuPLYW4Y6UpDEpvuKl4Ilmy4EtssMfSdF_P11dqmU0wlenyDpN81h-tVBHdcOpmMZwbnjky6VRsRfg%3D%3D?uid=2333478932&filename=mic-8.jpg&disposition=attachment&hash=&limit=0&content_type=image%2Fjpeg&owner_uid=2333478932&fsize=379662&hid=cfd578dadec0f7f610a3765a86d00158&media_type=image&tknv=v3&etag=963d257b906da15afec53137a71f144d"
+  },
+  {
+    "index": 8,
+    "filename": "mic-9.jpg",
+    "publicUrl": "https://downloader.disk.yandex.ru/disk/16f198a29ecb445163b31c858a1f57233157a3e4cbff07f5276f60dc6059c0df/69a0c3fa/nhlfEqlTRuPLYW4Y6UpDEmZUOjFCsMQlRbjjZr6vZR3oflq2ELwx6XvgGDhyxhU9I6oASZ7CBZ6F_6TCNwbGlg%3D%3D?uid=2333478932&filename=mic-9.jpg&disposition=attachment&hash=&limit=0&content_type=image%2Fjpeg&owner_uid=2333478932&fsize=374219&hid=0f5cdd93a169f31a55670735bb4242ec&media_type=image&tknv=v3&etag=ddd0937ff8ce83c14cd6e16ac8964a55"
+  },
+  {
+    "index": 9,
+    "filename": "mic-10.jpg",
+    "publicUrl": "https://downloader.disk.yandex.ru/disk/a8a60fee75c4b279c39e4ed8ad1bee18a9d3dc87b6ddfba13650a9ed1512cd3f/69a0c3fd/nhlfEqlTRuPLYW4Y6UpDEhuwF_DekIHo8lxsa3wwKXoyGxZkSnvHzTdrgos-E5mwUaCWVQ9IjgnsmW6z-tHFbA%3D%3D?uid=2333478932&filename=mic-10.jpg&disposition=attachment&hash=&limit=0&content_type=image%2Fjpeg&owner_uid=2333478932&fsize=370757&hid=d8c88fb560831507e446529bc4d977c3&media_type=image&tknv=v3&etag=165810573a6b23a4c13d56638761b6a5"
+  },
+  {
+    "index": 10,
+    "filename": "mic-11.jpg",
+    "publicUrl": "https://downloader.disk.yandex.ru/disk/8d6ff28862fce85dede28e572280605f6076fd7ef638b58e45cc82d177629d4b/69a0c3fc/nhlfEqlTRuPLYW4Y6UpDEiDlhlWlKdwYtp265nS7RBn53xttQa9qB5tWQ4z9JjIqf4ZpCrT_p2zTTYzJWsMIJw%3D%3D?uid=2333478932&filename=mic-11.jpg&disposition=attachment&hash=&limit=0&content_type=image%2Fjpeg&owner_uid=2333478932&fsize=370978&hid=293267a6742067ad222d7da9351dae20&media_type=image&tknv=v3&etag=70adcdde53d54266bd672beb9e4790f3"
+  },
+  {
+    "index": 11,
+    "filename": "mic-12.jpg",
+    "publicUrl": "https://downloader.disk.yandex.ru/disk/eee33f044827eb7d3731e0d65d057f332cdb035aba4d208ed4685a64d201568a/69a0c400/nhlfEqlTRuPLYW4Y6UpDEmoDhOse_YIaBuGozg5Xs3u5aU1mOMIaSx63kjKG8BWnyOwHL7-CEGgf2nYVxgQ4hA%3D%3D?uid=2333478932&filename=mic-12.jpg&disposition=attachment&hash=&limit=0&content_type=image%2Fjpeg&owner_uid=2333478932&fsize=372426&hid=9bf183a6ac7a65f7fd1068284c4f3765&media_type=image&tknv=v3&etag=ffb972e3a2fe118d0ee28cf4cc478926"
+  },
+  {
+    "index": 12,
+    "filename": "mic-13.jpg",
+    "publicUrl": "https://downloader.disk.yandex.ru/disk/1b03df4690e24af0df0c1ea0f274a4b637cc7f886b5bfd4c4f427615f3162411/69a0c401/nhlfEqlTRuPLYW4Y6UpDEql62bluoHzaM-qvDk9g8x_zJYz0x0ur93TQpihm62Q3W7-bom0qhhRC_5Mox-U1vA%3D%3D?uid=2333478932&filename=mic-13.jpg&disposition=attachment&hash=&limit=0&content_type=image%2Fjpeg&owner_uid=2333478932&fsize=373323&hid=448a8e7d5d20716267d1a965bd27a5ba&media_type=image&tknv=v3&etag=a0ef80554726b7990457c4a1568b397d"
+  },
+  {
+    "index": 13,
+    "filename": "mic-14.jpg",
+    "publicUrl": "https://downloader.disk.yandex.ru/disk/4ebbe47f2e97a41de50d2ad8e30921bf4d8d72e53f4b55f49891e5cb88b79bb5/69a0c401/nhlfEqlTRuPLYW4Y6UpDEsC7g7Dyw7BFXo-uC15clPDK2YrWLilSiX_6l3uUvKWT26MacxCL_nRrWXl7vDoLSQ%3D%3D?uid=2333478932&filename=mic-14.jpg&disposition=attachment&hash=&limit=0&content_type=image%2Fjpeg&owner_uid=2333478932&fsize=373594&hid=594d74856698d70b684b1a24e147d667&media_type=image&tknv=v3&etag=b5877c51ba3e51450057421c95b0471e"
+  },
+  {
+    "index": 14,
+    "filename": "mic-15.jpg",
+    "publicUrl": "https://downloader.disk.yandex.ru/disk/134dfb880e7f6daabe42ef5c1e95aebefbb3614bf38a8a828d552044e1df8cdc/69a0c401/nhlfEqlTRuPLYW4Y6UpDEtNqS6G3KH3qRfU6BwUnIsiQYt-XqsPBbM7ADRjwAu7zN9Ke7_9yFDveN7nHIxPr3Q%3D%3D?uid=2333478932&filename=mic-15.jpg&disposition=attachment&hash=&limit=0&content_type=image%2Fjpeg&owner_uid=2333478932&fsize=376702&hid=12eef810cda7db7557d13d3a9637e2af&media_type=image&tknv=v3&etag=05d8cf548cd01871627b2922558f76eb"
+  },
+  {
+    "index": 15,
+    "filename": "mic-16.jpg",
+    "publicUrl": "https://downloader.disk.yandex.ru/disk/c746e3aaa9e513b5d0027b228baca50305820bc2f445fc737f28f24292d90f95/69a0c404/nhlfEqlTRuPLYW4Y6UpDEpsHrNfhMbkF9yxtlkbML3zgBNf6KX9plw43YzzQE0XgFmXbN7V9CgAVEya_FZjg2w%3D%3D?uid=2333478932&filename=mic-16.jpg&disposition=attachment&hash=&limit=0&content_type=image%2Fjpeg&owner_uid=2333478932&fsize=382093&hid=c89dffaa81f5a516ed07b09f21ba68c9&media_type=image&tknv=v3&etag=35c8a77c3d6e7c1ff03120994002398c"
+  },
+  {
+    "index": 16,
+    "filename": "mic-17.jpg",
+    "publicUrl": "https://downloader.disk.yandex.ru/disk/7fe4700f7f39a9465417d704d84ca4cb510e6fb54dbeaf44d61a8f061f49f3af/69a0c407/nhlfEqlTRuPLYW4Y6UpDEqB7XfQn2EDaJ_p1uHspKx8FFxLXPjf6-IviFpLyI1lxItHojf-ED55urLF3FbKGmQ%3D%3D?uid=2333478932&filename=mic-17.jpg&disposition=attachment&hash=&limit=0&content_type=image%2Fjpeg&owner_uid=2333478932&fsize=386570&hid=1d15e446ca8439aa108d96d27da03cb9&media_type=image&tknv=v3&etag=d51cf0faa257fae5e6d43a042e3c5e31"
+  },
+  {
+    "index": 17,
+    "filename": "mic-18.jpg",
+    "publicUrl": "https://downloader.disk.yandex.ru/disk/da5ed26eb71fe19d965aa2f6497db3c33261c07d910b657c009fe8409fdfa871/69a0c408/nhlfEqlTRuPLYW4Y6UpDEuk82zYDr-rvO7p8n4tq43_hbfVAR8e4E8JHOczi0zXKv70mD3wCgOGeHdY0ge2tug%3D%3D?uid=2333478932&filename=mic-18.jpg&disposition=attachment&hash=&limit=0&content_type=image%2Fjpeg&owner_uid=2333478932&fsize=387754&hid=d26f933b58e0546c611c939ab9ce338b&media_type=image&tknv=v3&etag=1f1a3eb46c01d4acac655bc8528254f6"
+  },
+  {
+    "index": 18,
+    "filename": "mic-19.jpg",
+    "publicUrl": "https://downloader.disk.yandex.ru/disk/60441254c93d70782b889cc658ed1f6415794d95925b49b2e1f8c55edda974a6/69a0c407/nhlfEqlTRuPLYW4Y6UpDEkCRuKVH_6Mn7bEyIi1xXTb6h3JdQsgVnvwSC0Wuwx_n83Ri7zHBAXwT2DzJUFa0TA%3D%3D?uid=2333478932&filename=mic-19.jpg&disposition=attachment&hash=&limit=0&content_type=image%2Fjpeg&owner_uid=2333478932&fsize=386491&hid=fe86613daa2c4a8c57424f5262491b3c&media_type=image&tknv=v3&etag=c7b8ccd807cb652ab07a69c986180c7b"
+  },
+  {
+    "index": 19,
+    "filename": "mic-20.jpg",
+    "publicUrl": "https://downloader.disk.yandex.ru/disk/5267bd15d20bf7875b7c1365c08a979c2529931392a8ac17cf0d01c77e5b2e93/69a0c411/nhlfEqlTRuPLYW4Y6UpDEo9m0_MC-dfNQyJYXqQo9lNdZKxIujzme0TwR4Ekpw3uHD_BJ-1JgL3kEJprpaFWsA%3D%3D?uid=2333478932&filename=mic-20.jpg&disposition=attachment&hash=&limit=0&content_type=image%2Fjpeg&owner_uid=2333478932&fsize=398297&hid=9efc01cf30f1dd75bf2907ade54e2bc1&media_type=image&tknv=v3&etag=2161990ecf4102860967c0328c745ecb"
+  },
+  {
+    "index": 20,
+    "filename": "mic-21.jpg",
+    "publicUrl": "https://downloader.disk.yandex.ru/disk/fb7b75601874887c8954cf52c4e6d3eac87ae17e6f8f3b0f7c06675f5101b15d/69a0c40d/nhlfEqlTRuPLYW4Y6UpDEmvt5YSkEHNxvBfHDTFjiaZsLVX3-zftRcSLllOYuWDWXaXKCoz7tXBzSDh_vGtycA%3D%3D?uid=2333478932&filename=mic-21.jpg&disposition=attachment&hash=&limit=0&content_type=image%2Fjpeg&owner_uid=2333478932&fsize=402047&hid=c10be9bd71a4caa94991b22f8bcde9f9&media_type=image&tknv=v3&etag=d4ab12760a43981aaf3805d2cecaa0f6"
+  },
+  {
+    "index": 21,
+    "filename": "mic-22.jpg",
+    "publicUrl": "https://downloader.disk.yandex.ru/disk/9531cf3da1a1383d11842e0f02355112e330bf68f0a0d45950d5cc25f69d5b84/69a0c410/nhlfEqlTRuPLYW4Y6UpDEqL3jUF4WjgtQDhluBnrTlrJ6eFkMzqB5l5t8ghazfoYl6_ZfHzSDNrdM86nt4BFow%3D%3D?uid=2333478932&filename=mic-22.jpg&disposition=attachment&hash=&limit=0&content_type=image%2Fjpeg&owner_uid=2333478932&fsize=399579&hid=7bb32f632565f91c85df87372d0d0608&media_type=image&tknv=v3&etag=13534f61b30ef895dbb8c1f4200c376e"
+  },
+  {
+    "index": 22,
+    "filename": "mic-23.jpg",
+    "publicUrl": "https://downloader.disk.yandex.ru/disk/974b925dc8e6f1c321bb36fb15102f5c6e47fc3aee87e13d8ce802a17a00cf3c/69a0c413/nhlfEqlTRuPLYW4Y6UpDErLf1BJNAIBFLTrepoo-fZwTsE32t52mhuQFEPfIlLQJwbyanMP6mVxqbYriAiibTw%3D%3D?uid=2333478932&filename=mic-23.jpg&disposition=attachment&hash=&limit=0&content_type=image%2Fjpeg&owner_uid=2333478932&fsize=391175&hid=c2fb3356ee1666bac513d5d234f58cce&media_type=image&tknv=v3&etag=82debfb414271ff49e8cd4e94cf3ff6b"
+  },
+  {
+    "index": 23,
+    "filename": "mic-24.jpg",
+    "publicUrl": "https://downloader.disk.yandex.ru/disk/c6d0869adfdab7d22248980b3f85afc4f0bd655022658275468c256f26f52252/69a0c414/nhlfEqlTRuPLYW4Y6UpDEiUJRIhW_TPBOMRcll8MwHwfCyTSZHHYdTTOYjXoLKhwMXsiR7sKJtNJ8zzQUJ9ufQ%3D%3D?uid=2333478932&filename=mic-24.jpg&disposition=attachment&hash=&limit=0&content_type=image%2Fjpeg&owner_uid=2333478932&fsize=375629&hid=8c10414d6b6683c7f7eb11443b224c95&media_type=image&tknv=v3&etag=60dc2bc788c83c3cdd04f62c1faf695a"
+  },
+  {
+    "index": 24,
+    "filename": "mic-25.jpg",
+    "publicUrl": "https://downloader.disk.yandex.ru/disk/e9ddaeb89692a890fd7f968abfe1df0938394b11b5d3b0b21e49fdf2d1d6dd0f/69a0c414/nhlfEqlTRuPLYW4Y6UpDEkBPVx9p9efacqSPIwX_k33-lwm1K3f13BP2w6w4DQ944gZrBjEQmSPUXNmyu5GS-A%3D%3D?uid=2333478932&filename=mic-25.jpg&disposition=attachment&hash=&limit=0&content_type=image%2Fjpeg&owner_uid=2333478932&fsize=379627&hid=2089fb2953d5972158db55426854b69b&media_type=image&tknv=v3&etag=b36f58496bae2643704aa6c90b1fb8dc"
+  },
+  {
+    "index": 25,
+    "filename": "mic-26.jpg",
+    "publicUrl": "https://downloader.disk.yandex.ru/disk/30889021abb8e3064c79d24e1d267205ff6b46f3495c764aea225908bc14b4b1/69a0c417/nhlfEqlTRuPLYW4Y6UpDEpHLC1ksNgWbqpFQCibpqzvOcbmAVZFGeUBq9qNls4lVR9vyBPPutL3McT-OGicEgw%3D%3D?uid=2333478932&filename=mic-26.jpg&disposition=attachment&hash=&limit=0&content_type=image%2Fjpeg&owner_uid=2333478932&fsize=367516&hid=ae207ab6a407f30813881f9ada37086e&media_type=image&tknv=v3&etag=5c74e5442451d410441b1cb6452e222d"
+  },
+  {
+    "index": 26,
+    "filename": "mic-27.jpg",
+    "publicUrl": "https://downloader.disk.yandex.ru/disk/2bf17b69b3981f58430484e1b7894abc6f2e7fb40de0d417847a79c3c0c4a8fc/69a0c418/nhlfEqlTRuPLYW4Y6UpDEhHTpSPBV3GXT3xnhzbEljhHO65tULUTDDNcp1FP7soTPBZKqnD3kBMLFfeQQqECOw%3D%3D?uid=2333478932&filename=mic-27.jpg&disposition=attachment&hash=&limit=0&content_type=image%2Fjpeg&owner_uid=2333478932&fsize=353842&hid=ed71204b9d6d7ac8e613ed9f3f829ccf&media_type=image&tknv=v3&etag=4ebb40f6359da8d84bfb0388bcdbf3b3"
+    }
+  ];
+
+      // --- State variables ---
+      let currentFrame = 0;
+      let images = [];
+      let isLoaded = false;
+      let isDragging = false;
+      let startX = 0;
+
+      // DOM elements
+      const viewer = document.getElementById('viewer');
+      const viewerWrapper = document.querySelector('.viewer-wrapper');
+      const viewerAspect = document.querySelector('.viewer-aspect');
+      const loadingIndicator = document.getElementById('loadingIndicator');
+      const loadingProgress = document.getElementById('loadingProgress');
+      const frameCounter = document.getElementById('frameCounter');
+      const fullscreenBtn = document.getElementById('fullscreenBtn');
+
+      // Preload images from RESULT_DATA (array of {index, filename, publicUrl})
+      function preloadImages() {
+        const data = Array.isArray(window.RESULT_DATA) ? window.RESULT_DATA : [];
+        const TOTAL_FRAMES = data.length;
+
+        loadingProgress.textContent = `0 / ${TOTAL_FRAMES}`;
+
+        if (TOTAL_FRAMES === 0) {
+          // Fallback: try to fetch result.json next to widget
+          fetch('result.json')
+            .then(res => res.json())
+            .then(json => {
+              window.RESULT_DATA = json || [];
+              preloadImages();
+            })
+            .catch(() => {
+              loadingIndicator.innerHTML = '<div style="color: #f66;">Error: No images found. Provide data or embed the array when generating the widget.</div>';
+              loadingIndicator.style.display = 'block';
+            });
+          return;
+        }
+
+        let loadedCount = 0;
+
+        data.forEach((item, i) => {
+          const img = new Image();
+
+          img.onload = () => {
+            loadedCount++;
+            loadingProgress.textContent = `${loadedCount} / ${TOTAL_FRAMES}`;
+            if (loadedCount === TOTAL_FRAMES) {
+              isLoaded = true;
+              loadingIndicator.style.display = 'none';
+              // show middle frame by default
+              showFrame(Math.floor(TOTAL_FRAMES / 2));
+            }
+          };
+
+          img.onerror = () => {
+            console.warn('Failed to load image', item && item.publicUrl);
+            loadedCount++;
+            loadingProgress.textContent = `${loadedCount} / ${TOTAL_FRAMES}`;
+            if (loadedCount === TOTAL_FRAMES) {
+              isLoaded = true;
+              loadingIndicator.style.display = 'none';
+              if (images.length > 0) {
+                showFrame(Math.floor(TOTAL_FRAMES / 2));
+              } else {
+                loadingIndicator.innerHTML = '<div style="color: #f66;">Error: Images could not be loaded.</div>';
+                loadingIndicator.style.display = 'block';
+              }
+            }
+          };
+
+          img.src = item && item.publicUrl ? item.publicUrl : '';
+          images.push(img);
+        });
+      }
+
+      function showFrame(index) {
+        if (!isLoaded || images.length === 0) return;
+        const TOTAL_FRAMES = images.length;
+        index = Math.max(0, Math.min(index, TOTAL_FRAMES - 1));
+        currentFrame = index;
+        viewer.src = images[currentFrame].src;
+        frameCounter.textContent = `Frame: ${currentFrame + 1} / ${TOTAL_FRAMES}`;
+      }
+
+      // Mouse drag handlers
+      viewerWrapper.addEventListener('mousedown', (e) => {
+        if (!isLoaded) return;
+        isDragging = true;
+        startX = e.pageX;
+      });
+
+      document.addEventListener('mousemove', (e) => {
+        if (!isDragging) return;
+        const deltaX = e.pageX - startX;
+        const sensitivity = 10;
+        if (Math.abs(deltaX) > sensitivity) {
+          // move pointer right -> advance frames (positive)
+          const direction = deltaX > 0 ? 1 : -1;
+          showFrame(currentFrame + direction);
+          startX = e.pageX;
+        }
+      });
+
+      document.addEventListener('mouseup', () => { isDragging = false; });
+
+      // Touch handlers
+      let touchStartX = 0;
+      viewerWrapper.addEventListener('touchstart', (e) => { if (!isLoaded) return; touchStartX = e.touches[0].pageX; });
+      viewerWrapper.addEventListener('touchmove', (e) => { if (!isLoaded) return; e.preventDefault(); const deltaX = e.touches[0].pageX - touchStartX; const sensitivity = 10; if (Math.abs(deltaX) > sensitivity) { const direction = deltaX > 0 ? 1 : -1; showFrame(currentFrame + direction); touchStartX = e.touches[0].pageX; } }, { passive: false });
+
+      // Wheel control
+      viewerWrapper.addEventListener('wheel', (e) => { if (!isLoaded) return; e.preventDefault(); const direction = e.deltaY > 0 ? 1 : -1; showFrame(currentFrame + direction); }, { passive: false });
+
+      // Fullscreen
+      fullscreenBtn.addEventListener('click', () => {
+        // Request fullscreen on the viewer wrapper so the viewer scales inside it
+        if (!document.fullscreenElement) {
+          if (viewerWrapper.requestFullscreen) viewerWrapper.requestFullscreen();
+        } else {
+          if (document.exitFullscreen) document.exitFullscreen();
+        }
+      });
+
+      // Update styling when fullscreen changes
+      document.addEventListener('fullscreenchange', () => {
+        if (document.fullscreenElement === viewerWrapper) {
+          // apply fullscreen-friendly styles (handled by CSS :fullscreen)
+        } else {
+          // exiting fullscreen
+        }
+      });
+
+      // Start preloading
+      preloadImages();
+    </script>
+  </body>
+  </html>

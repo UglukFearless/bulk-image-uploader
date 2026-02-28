@@ -1,7 +1,4 @@
-﻿using System.Net.Http;
-using System.IO;
-using BatchImageUploader.Services;
-using BatchImageUploader.Services.Interfaces;
+﻿using BatchImageUploader.Services;
 using BatchImageUploader.Startup;
 
 try
@@ -53,8 +50,29 @@ try
     Console.WriteLine($"\nSummary: {successCount} successful, {failedCount} failed");
 
     Console.WriteLine("Saving results to result.json...");
-    await ResultWriter.WriteResultsAsync(results, cancellationToken: cancellationToken);
+    // Prepare successful results (ordered) for both writing and widget generation
+    var successfulResults = results
+        .Where(r => r != null)
+        .OrderBy(r => r.Index)
+        .ToArray();
+
+    await ResultWriter.WriteResultsAsync(successfulResults, cancellationToken: cancellationToken);
     Console.WriteLine("Results saved successfully");
+
+    if (settings.GenerateWidget)
+    {
+        try
+        {
+            Console.WriteLine("Generating widget.html from template...");
+            var widgetGenerator = new WidgetGenerator();
+            var widgetPath = await widgetGenerator.GenerateAsync(successfulResults, cancellationToken);
+            Console.WriteLine($"Widget generated: {widgetPath}");
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Widget generation failed: {ex.Message}");
+        }
+    }
 }
 catch (Exception ex)
 {

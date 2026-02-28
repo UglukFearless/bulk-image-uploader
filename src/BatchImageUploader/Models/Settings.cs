@@ -22,4 +22,7 @@ public class Settings
 
     [JsonPropertyName("AllowedExtensions")]
     public string[] AllowedExtensions { get; set; } = Array.Empty<string>();
+
+    [JsonPropertyName("GenerateWidget")]
+    public bool GenerateWidget { get; set; } = false;
 }

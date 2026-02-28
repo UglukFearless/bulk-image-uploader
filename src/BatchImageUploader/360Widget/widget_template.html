@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>360° Viewer</title>
+  <style>
+    :root { --bg1: #667eea; --bg2: #764ba2; --accent: #667eea; }
+    * { box-sizing: border-box; }
+    html,body { height:100%; margin:0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif; background: linear-gradient(135deg,var(--bg1) 0%,var(--bg2) 100%); display:flex; align-items:center; justify-content:center; padding:24px; }
+    .container { background:#fff; border-radius:16px; box-shadow:0 20px 60px rgba(0,0,0,0.25); padding:24px; width:100%; max-width:900px; }
+    h1 { margin:0 0 8px; font-size:24px; color:#222; text-align:center; }
+    .subtitle { margin:0 0 18px; color:#666; text-align:center; }
+
+    /* Viewer layout */
+    .viewer-wrapper { position:relative; width:100%; max-width:760px; margin:0 auto; background:#111; border-radius:12px; overflow:hidden; display:flex; align-items:center; justify-content:center; }
+    /* Maintain aspect ratio so placeholder/spinner are visible */
+    .viewer-aspect { width:100%; aspect-ratio: 16 / 9; display:block; position:relative; }
+
+    #viewer { display:block; width:100%; height:100%; object-fit:contain; background:#000; }
+
+    .loading-indicator { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); text-align:center; color:#ddd; z-index:20; pointer-events:none; }
+    .spinner { width:56px; height:56px; border-radius:50%; border:6px solid rgba(255,255,255,0.15); border-top-color:var(--accent); animation:spin 1s linear infinite; margin:0 auto 12px; }
+    @keyframes spin { to { transform:rotate(360deg); } }
+
+    .frame-counter { text-align:center; margin-top:14px; color:var(--accent); font-weight:600; }
+
+    .fullscreen-btn { position:absolute; top:12px; right:12px; z-index:30; background:rgba(0,0,0,0.45); border:0; width:44px; height:44px; border-radius:8px; display:flex; align-items:center; justify-content:center; cursor:pointer; }
+
+    @media (max-width:600px) { .container{padding:16px;} h1{font-size:20px;} }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>360° Viewer</h1>
+    <p class="subtitle">Drag or swipe to rotate</p>
+
+    <div class="viewer-wrapper">
+      <div class="viewer-aspect">
+        <!-- Transparent 1x1 GIF prevents browser from showing broken image icon before first frame -->
+        <img id="viewer" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==" alt="360 view" />
+
+        <button class="fullscreen-btn" id="fullscreenBtn" title="Fullscreen" aria-label="Toggle fullscreen">
+          <svg id="expandIcon" viewBox="0 0 24 24" width="20" height="20" fill="#fff" xmlns="http://www.w3.org/2000/svg"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>
+        </button>
+
+        <div class="loading-indicator" id="loadingIndicator" aria-hidden="false">
+          <div class="spinner" role="status" aria-hidden="true"></div>
+          <div id="loadingText">Loading images...</div>
+          <div id="loadingProgress">0 / 0</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="frame-counter" id="frameCounter">Frame: 0 / 0</div>
+  </div>
+
+  <script>
+    // Embedded data from result.json
+    window.RESULT_DATA = /* DATA_ARRAY */ [];
+
+      // --- State variables ---
+      let currentFrame = 0;
+      let images = [];
+      let isLoaded = false;
+      let isDragging = false;
+      let startX = 0;
+
+      // DOM elements
+      const viewer = document.getElementById('viewer');
+      const viewerWrapper = document.querySelector('.viewer-wrapper');
+      const viewerAspect = document.querySelector('.viewer-aspect');
+      const loadingIndicator = document.getElementById('loadingIndicator');
+      const loadingProgress = document.getElementById('loadingProgress');
+      const frameCounter = document.getElementById('frameCounter');
+      const fullscreenBtn = document.getElementById('fullscreenBtn');
+
+      // Preload images from RESULT_DATA (array of {index, filename, publicUrl})
+      function preloadImages() {
+        const data = Array.isArray(window.RESULT_DATA) ? window.RESULT_DATA : [];
+        const TOTAL_FRAMES = data.length;
+
+        loadingProgress.textContent = `0 / ${TOTAL_FRAMES}`;
+
+        if (TOTAL_FRAMES === 0) {
+          // Fallback: try to fetch result.json next to widget
+          fetch('result.json')
+            .then(res => res.json())
+            .then(json => {
+              window.RESULT_DATA = json || [];
+              preloadImages();
+            })
+            .catch(() => {
+              loadingIndicator.innerHTML = '<div style="color: #f66;">Error: No images found. Provide data or embed the array when generating the widget.</div>';
+              loadingIndicator.style.display = 'block';
+            });
+          return;
+        }
+
+        let loadedCount = 0;
+
+        data.forEach((item, i) => {
+          const img = new Image();
+
+          img.onload = () => {
+            loadedCount++;
+            loadingProgress.textContent = `${loadedCount} / ${TOTAL_FRAMES}`;
+            if (loadedCount === TOTAL_FRAMES) {
+              isLoaded = true;
+              loadingIndicator.style.display = 'none';
+              // show middle frame by default
+              showFrame(Math.floor(TOTAL_FRAMES / 2));
+            }
+          };
+
+          img.onerror = () => {
+            console.warn('Failed to load image', item && item.publicUrl);
+            loadedCount++;
+            loadingProgress.textContent = `${loadedCount} / ${TOTAL_FRAMES}`;
+            if (loadedCount === TOTAL_FRAMES) {
+              isLoaded = true;
+              loadingIndicator.style.display = 'none';
+              if (images.length > 0) {
+                showFrame(Math.floor(TOTAL_FRAMES / 2));
+              } else {
+                loadingIndicator.innerHTML = '<div style="color: #f66;">Error: Images could not be loaded.</div>';
+                loadingIndicator.style.display = 'block';
+              }
+            }
+          };
+
+          img.src = item && item.publicUrl ? item.publicUrl : '';
+          images.push(img);
+        });
+      }
+
+      function showFrame(index) {
+        if (!isLoaded || images.length === 0) return;
+        const TOTAL_FRAMES = images.length;
+        index = Math.max(0, Math.min(index, TOTAL_FRAMES - 1));
+        currentFrame = index;
+        viewer.src = images[currentFrame].src;
+        frameCounter.textContent = `Frame: ${currentFrame + 1} / ${TOTAL_FRAMES}`;
+      }
+
+      // Mouse drag handlers
+      viewerWrapper.addEventListener('mousedown', (e) => {
+        if (!isLoaded) return;
+        isDragging = true;
+        startX = e.pageX;
+      });
+
+      document.addEventListener('mousemove', (e) => {
+        if (!isDragging) return;
+        const deltaX = e.pageX - startX;
+        const sensitivity = 10;
+        if (Math.abs(deltaX) > sensitivity) {
+          // move pointer right -> advance frames (positive)
+          const direction = deltaX > 0 ? 1 : -1;
+          showFrame(currentFrame + direction);
+          startX = e.pageX;
+        }
+      });
+
+      document.addEventListener('mouseup', () => { isDragging = false; });
+
+      // Touch handlers
+      let touchStartX = 0;
+      viewerWrapper.addEventListener('touchstart', (e) => { if (!isLoaded) return; touchStartX = e.touches[0].pageX; });
+      viewerWrapper.addEventListener('touchmove', (e) => { if (!isLoaded) return; e.preventDefault(); const deltaX = e.touches[0].pageX - touchStartX; const sensitivity = 10; if (Math.abs(deltaX) > sensitivity) { const direction = deltaX > 0 ? 1 : -1; showFrame(currentFrame + direction); touchStartX = e.touches[0].pageX; } }, { passive: false });
+
+      // Wheel control
+      viewerWrapper.addEventListener('wheel', (e) => { if (!isLoaded) return; e.preventDefault(); const direction = e.deltaY > 0 ? 1 : -1; showFrame(currentFrame + direction); }, { passive: false });
+
+      // Fullscreen
+      fullscreenBtn.addEventListener('click', () => {
+        // Request fullscreen on the viewer wrapper so the viewer scales inside it
+        if (!document.fullscreenElement) {
+          if (viewerWrapper.requestFullscreen) viewerWrapper.requestFullscreen();
+        } else {
+          if (document.exitFullscreen) document.exitFullscreen();
+        }
+      });
+
+      // Update styling when fullscreen changes
+      document.addEventListener('fullscreenchange', () => {
+        if (document.fullscreenElement === viewerWrapper) {
+          // apply fullscreen-friendly styles (handled by CSS :fullscreen)
+        } else {
+          // exiting fullscreen
+        }
+      });
+
+      // Start preloading
+      preloadImages();
+    </script>
+  </body>
+  </html>

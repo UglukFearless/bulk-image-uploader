@@ -1,4 +1,6 @@
 using System.Text.Json;
+using System.Text.Encodings.Web;
+using System.Text.Unicode;
 using BatchImageUploader.Models;
 
 namespace BatchImageUploader.Services;
@@ -21,7 +23,9 @@ public static class ResultWriter
         var options = new JsonSerializerOptions
         {
             WriteIndented = true,
-            PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            // Prevent escaping of HTML-sensitive characters (like '&') so URLs remain readable
+            Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
         };
 
         var json = JsonSerializer.Serialize(successfulResults, options);

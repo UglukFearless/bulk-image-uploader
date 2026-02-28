@@ -103,7 +103,6 @@ BatchImageUploader/
 
 - **Async-first**: pure `async/await` pipeline without `Task.Run` for artificial parallelism
 - **Work distribution**: `ConcurrentQueue<UploadItem>` for atomic file distribution
-- **Concurrency control**: `SemaphoreSlim` held during entire upload cycle per file (upload → publish)
 - **HTTP client**: single `HttpClient` instance reused across all upload tasks
 - **Cancellation**: full `CancellationToken` support (Ctrl+C handling)
 - **Error handling**: failed uploads logged to console but do not abort entire batch
@@ -118,7 +117,7 @@ Architecture enables easy provider replacement without orchestrator changes.
 
 ### Critical Requirements
 
-- **Root pollution prevention**: validate `TargetDiskFolder` at startup. Reject: `null`, `""`, `"/"`, `"."`, whitespace-only
+- **Root pollution prevention**: validate `TargetDiskFolder` at startup. Reject: `null`, `""`, `/`, `.`, whitespace-only
 - **Folder creation timing**: `EnsureFolderExistsAsync` called **once before** upload phase, outside semaphore scope
 - **Atomic file distribution**: `ConcurrentQueue<UploadItem>` + `TryDequeue()` — zero locks required
 - **Result ordering**: pre-allocated array indexed by `UploadItem.Index` — no post-sorting needed
@@ -126,6 +125,24 @@ Architecture enables easy provider replacement without orchestrator changes.
 - **Semaphore scope**: acquired before upload start per file, released after publish completes
 - **Memory safety**: stream files directly (`FileStream` → `StreamContent`) without full buffering
 - **Error isolation**: individual upload failure does not cancel other tasks or entire batch
+
+## 360° Widget (new feature)
+
+Goal: prepare an HTML widget that can be embedded into any page (Wix, Tilda, etc.) and that receives the uploaded file list as JSON produced by the uploader.
+
+- The source widget template is `src/360Widget/index.html`.
+- Plan: extract a template from the current widget with a placeholder for the data array (for example `<!-- DATA_ARRAY -->`) and generate a ready-to-use `widget.html` with the array embedded.
+- The generated `widget.html` should be self-contained and embeddable into site builders (inline styles and scripts where necessary).
+- The uploader program will write `widget.html` next to `result.json` after successful upload.
+
+## Next Steps for Widget Integration
+
+1. Extract the widget template in `src/360Widget/index.html` and mark the insertion point for the JSON array (for example `<!-- DATA_ARRAY -->`).
+2. Add widget generation to the uploader program:
+   - read `result.json`
+   - insert the array into the template
+   - save `widget.html` next to `result.json`
+3. Document how to embed `widget.html` in Wix/Tilda (iframe or inline code).
 
 ## Documentation
 
